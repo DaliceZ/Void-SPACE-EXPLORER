@@ -8,6 +8,19 @@ import { telemetry } from "./telemetry";
 import { surfaceHeight } from "./terrain";
 import { chime, updateAudio } from "./audio";
 import { Spacecraft } from "./Spacecraft";
+import { surface } from "./surface/state";
+import {
+  beginLanding,
+  takeOff,
+  updateLandingStatus,
+  updateTraversal,
+} from "./surface/traversal";
+import { startSurfaceScan } from "./surface/actions";
+import { placePiece } from "./surface/building";
+import { currentShip } from "./surface/fleet";
+import { pressInteraction, updateInteraction } from "./surface/interaction";
+import { feedback, impact, groundMaterial, vehicleFeedback } from "./feedback";
+import { groundPoint, radial } from "./surface/ground";
 const axisX = new Vector3(1, 0, 0),
   axisY = new Vector3(0, 1, 0),
   axisZ = new Vector3(0, 0, 1);
@@ -32,21 +45,71 @@ export function Flight() {
         e.preventDefault();
       if (e.code === "Escape") {
         if (s.screen === "flight") s.setScreen("pause");
-        else if (s.screen === "pause" || s.screen === "journal")
+        else if (
+          ["pause", "journal", "inventory", "fleet", "map"].includes(s.screen)
+        )
           s.setScreen("flight");
         else s.setScreen("menu");
         return;
       }
       if (
         e.code === "Tab" &&
-        (s.screen === "flight" || s.screen === "journal")
+        (s.screen === "flight" ||
+          s.screen === "journal" ||
+          s.screen === "inventory")
       ) {
-        s.setScreen(s.screen === "journal" ? "flight" : "journal");
+        s.setScreen(
+          s.screen !== "flight"
+            ? "flight"
+            : surface.data.mode === "foot"
+              ? "inventory"
+              : "journal",
+        );
         return;
       }
       if (e.code === "F3") s.setDebug();
       if (s.screen !== "flight" || e.repeat) return;
       flight.keys.add(e.code);
+      if (e.code === "KeyJ") {
+        s.setScreen("journal");
+        return;
+      }
+      if (e.code === "KeyM" && surface.data.mode !== "flight") {
+        s.setScreen("map");
+        return;
+      }
+      if (e.code === "KeyK" && surface.data.mode !== "flight") {
+        s.setScreen("fleet");
+        return;
+      }
+      if (e.code === "KeyB" && surface.data.mode === "foot") {
+        surface.building = !surface.building;
+        surface.mouseDown = false;
+        return;
+      }
+      if (e.code === "KeyR" && surface.building) {
+        surface.buildRotation = (surface.buildRotation + 1) % 4;
+        return;
+      }
+      if (e.code === "KeyE" && surface.building) {
+        placePiece();
+        return;
+      }
+      if (e.code === "KeyL") {
+        if (surface.data.mode === "landed") takeOff();
+        else if (surface.data.mode === "flight")
+          beginLanding(telemetry.target || world.planets[0]);
+        return;
+      }
+      if (e.code === "KeyE" && surface.data.mode !== "flight") {
+        pressInteraction();
+        return;
+      }
+      if (e.code === "KeyF" && surface.data.mode === "foot") {
+        startSurfaceScan();
+        return;
+      }
+      if (surface.data.mode !== "flight") return;
       if (e.code === "KeyR") flight.mode = (flight.mode + 1) % 3;
       if (e.code === "KeyV") flight.view = (flight.view + 1) % 2;
       if (e.code === "KeyF") {
@@ -65,6 +128,7 @@ export function Flight() {
       }
     };
     const blur = () => {
+      surface.mouseDown = false;
       flight.keys.clear();
       if (useGame.getState().screen === "flight")
         useGame.getState().setScreen("pause");
@@ -73,11 +137,16 @@ export function Flight() {
     window.addEventListener("keyup", up);
     window.addEventListener("mousemove", move);
     window.addEventListener("blur", blur);
+    const mouseUp = () => {
+      surface.mouseDown = false;
+    };
+    window.addEventListener("mouseup", mouseUp);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("mousemove", move);
       window.removeEventListener("blur", blur);
+      window.removeEventListener("mouseup", mouseUp);
     };
   }, []);
   useFrame(({ camera, gl }, delta) => {
@@ -96,8 +165,39 @@ export function Flight() {
     }
     telemetry.atmosphere = !!nearest && altitude < nearest.radius * 0.12;
     telemetry.altitude = Math.max(0, altitude);
+    updateLandingStatus(nearest);
+    if (surface.data.mode !== "flight") {
+      if (active) updateInteraction(dt);
+      updateTraversal(dt, camera as PerspectiveCamera, active);
+      telemetry.fps =
+        telemetry.fps * 0.95 + (1 / Math.max(delta, 0.001)) * 0.05;
+      telemetry.drawCalls = gl.info.render.calls;
+      telemetry.triangles = gl.info.render.triangles;
+      telemetry.geometries = gl.info.memory.geometries;
+      if (ship.current) {
+        ship.current.visible = true;
+        ship.current.position.copy(
+          surface.data.mode === "foot"
+            ? new Vector3(...surface.data.shipPosition).sub(flight.position)
+            : new Vector3(),
+        );
+        ship.current.quaternion.copy(
+          surface.data.mode === "foot"
+            ? new Quaternion(...surface.data.shipRotation)
+            : flight.rotation,
+        );
+      }
+      updateAudio(
+        surface.data.mode === "landing" ? 30 : 0,
+        state.settings.volume,
+        active && surface.data.mode === "landing",
+      );
+      return;
+    }
     if (active) {
       const k = flight.keys;
+      const vessel = currentShip();
+      surface.data.elapsed += dt;
       flight.rotation.multiply(
         q.setFromAxisAngle(
           axisY,
@@ -136,14 +236,24 @@ export function Flight() {
         Number(k.has("Space")) - Number(k.has("KeyC")),
         Number(k.has("KeyS")) - Number(k.has("KeyW")),
       );
-      const boost = k.has("ShiftLeft") && flight.energy > 5;
+      const boost =
+        k.has("ShiftLeft") && flight.energy > 5 && thrust.lengthSq() > 0;
+      if (boost && !feedback.boost)
+        impact("boost", flight.position, axisY, "metal", 0.7);
+      feedback.boost = boost;
+      surface.throttle +=
+        (Number(thrust.lengthSq() > 0) * (boost ? 1.8 : 1) - surface.throttle) *
+        (1 - Math.exp(-dt * 6));
       const speed = Math.min(
-        SPEEDS[flight.mode] * (boost ? 1.8 : 1),
+        SPEEDS[flight.mode] * vessel.speed * (boost ? 1.8 : 1),
         Math.max(35, altitude * 0.8),
       );
       flight.energy = Math.max(
         0,
-        Math.min(100, flight.energy + (boost ? -9 : 5) * dt),
+        Math.min(
+          100,
+          flight.energy + (boost ? -9 / vessel.efficiency : 5) * dt,
+        ),
       );
       if (thrust.lengthSq() > 0)
         thrust
@@ -152,7 +262,7 @@ export function Flight() {
           .applyQuaternion(flight.rotation);
       flight.velocity.lerp(
         thrust,
-        1 - Math.exp(-dt * (k.has("KeyX") ? 8 : 1.4)),
+        1 - Math.exp(-dt * (k.has("KeyX") ? 8 : 1.4 * vessel.handling)),
       );
       flight.velocity.clampLength(0, speed);
       if (k.has("KeyX")) flight.velocity.multiplyScalar(Math.exp(-dt * 6));
@@ -166,6 +276,14 @@ export function Flight() {
         if (distance < surface) {
           flight.position.copy(relative).addScaledVector(normal, surface);
           const inward = flight.velocity.dot(normal);
+          if (inward < -4 && feedback.kick < 0.003)
+            impact(
+              "collision",
+              flight.position,
+              normal,
+              groundMaterial(p),
+              Math.min(2, -inward / 30),
+            );
           if (inward < 0) flight.velocity.addScaledVector(normal, -inward);
         }
       }
@@ -188,12 +306,17 @@ export function Flight() {
     flight.mouse.x = flight.mouse.y = 0;
     camera.quaternion.slerp(flight.rotation, 1 - Math.exp(-dt * 9));
     offset
-      .set(0, flight.view === 0 ? 2 : 0, flight.view === 0 ? 9 : 0)
+      .set(
+        0,
+        flight.view === 0 ? 2 : 0,
+        flight.view === 0 ? 9 + surface.throttle * 0.7 : 0,
+      )
       .applyQuaternion(flight.rotation);
     camera.position.copy(offset);
     const cam = camera as PerspectiveCamera;
     cam.fov +=
       (state.settings.fov +
+        surface.throttle * 2 +
         (flight.mode === 2 && active
           ? Math.min(15, flight.velocity.length() / 200)
           : 0) -
@@ -237,7 +360,7 @@ export function Flight() {
         flight.scan = 0;
         state.notify("Scan interrupted · keep target in view");
       } else {
-        flight.scan += dt / 4;
+        flight.scan += (dt * currentShip().scanner) / 4;
         if (flight.scan >= 1) {
           state.record({ ...target, time: Date.now() });
           chime(state.settings.volume);
@@ -246,6 +369,33 @@ export function Flight() {
       }
     }
     telemetry.speed = flight.velocity.length();
+    if (nearest && active) {
+      const n = radial(nearest, flight.position),
+        density = Math.max(0, 1 - altitude / (nearest.radius * 0.12)),
+        entry = Math.max(0, -flight.velocity.clone().normalize().dot(n));
+      vehicleFeedback.heat +=
+        (Math.min(
+          1,
+          density * Math.max(0, (telemetry.speed - 35) / 60) * entry,
+        ) -
+          vehicleFeedback.heat) *
+        (1 - Math.exp(-dt * 3));
+      vehicleFeedback.engineClock += dt;
+      if (
+        altitude < 20 &&
+        surface.throttle > 0.1 &&
+        vehicleFeedback.engineClock > 0.2
+      ) {
+        impact(
+          "engine",
+          groundPoint(nearest, n),
+          n,
+          groundMaterial(nearest),
+          Math.min(1, surface.throttle),
+        );
+        vehicleFeedback.engineClock = 0;
+      }
+    }
     telemetry.fps = telemetry.fps * 0.95 + (1 / Math.max(delta, 0.001)) * 0.05;
     telemetry.drawCalls = gl.info.render.calls;
     telemetry.triangles = gl.info.render.triangles;
@@ -257,6 +407,7 @@ export function Flight() {
         useGame.setState({ systems: [...state.systems, systemId] });
     }
     if (ship.current) {
+      ship.current.position.set(0, 0, 0);
       ship.current.quaternion.copy(flight.rotation);
       ship.current.visible = flight.view === 0 && active;
     }

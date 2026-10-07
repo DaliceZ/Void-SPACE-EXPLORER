@@ -5,6 +5,13 @@ import { telemetry } from "../game/telemetry";
 import { sectorAt } from "../game/universe";
 import { world } from "../game/Universe";
 import { activateAudio } from "../game/audio";
+import { surface } from "../game/surface/state";
+import { SurfaceHUD, LandingHUD } from "./SurfaceHUD";
+import { DiscoveryJournal } from "./Journal";
+import { FleetPanel } from "./Fleet";
+import { SurfaceDebug } from "./SurfaceDebug";
+import { SurfaceMap } from "./SurfaceMap";
+import { InventoryPanel } from "./Inventory";
 const format = (v: number) =>
   Number.isFinite(v) ? Math.round(v).toLocaleString("en-US") : "—";
 export function Interface() {
@@ -54,14 +61,14 @@ export function Interface() {
         </a>
         <div className="header-right">
           <span className="status-dot" /> ALL SYSTEMS NOMINAL{" "}
-          <span className="version">EXP. 001 / ALPHA</span>
+          <span className="version">EXP. 002 / PLANETFALL</span>
         </div>
       </header>
       {screen === "flight" ? (
-        <HUD />
+        <GameplayHUD />
       ) : (
         <div
-          className={`menu-content ${screen === "menu" ? "home" : ""}`}
+          className={`menu-content ${screen === "menu" ? "home" : ""} ${["journal", "inventory", "fleet", "map"].includes(screen) ? "wide-panel" : ""}`}
           ref={panel}
           role="dialog"
           aria-modal="true"
@@ -256,7 +263,10 @@ export function Interface() {
               </button>
             </>
           )}
-          {screen === "journal" && <Journal />}
+          {screen === "journal" && <DiscoveryJournal />}
+          {screen === "inventory" && <InventoryPanel />}
+          {screen === "fleet" && <FleetPanel />}
+          {screen === "map" && <SurfaceMap />}
         </div>
       )}
       {screen === "menu" && (
@@ -302,6 +312,24 @@ export function Interface() {
         </p>
       </div>
     </div>
+  );
+}
+function GameplayHUD() {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => (n + 1) % 1000), 100);
+    return () => clearInterval(id);
+  }, []);
+  return surface.data.mode === "foot" ? (
+    <>
+      <SurfaceHUD />
+      {useGame.getState().debug && <SurfaceDebug />}
+    </>
+  ) : (
+    <>
+      <HUD />
+      <LandingHUD />
+    </>
   );
 }
 function Settings() {
@@ -398,70 +426,6 @@ function Controls() {
         <kbd>ESC</kbd> Pause
       </span>
     </div>
-  );
-}
-function Journal() {
-  const discoveries = useGame((s) => s.discoveries),
-    systems = useGame((s) => s.systems),
-    setScreen = useGame((s) => s.setScreen);
-  return (
-    <>
-      <div className="eyebrow">EXPEDITION / ARCHIVE</div>
-      <h2>Discovery journal.</h2>
-      <p className="panel-copy">
-        {discoveries.length.toString().padStart(2, "0")} WORLDS CATALOGUED{" "}
-        <span className="muted"> / {systems.length} SYSTEMS VISITED</span>
-      </p>
-      <div className="discovery-list">
-        {discoveries.length ? (
-          discoveries.map((d, i) => (
-            <article key={d.id}>
-              <div className="eyebrow">
-                {String(i + 1).padStart(2, "0")} / {d.type.toUpperCase()} WORLD
-              </div>
-              <h3>{d.name}</h3>
-              <dl>
-                <div>
-                  <dt>Temperature</dt>
-                  <dd>{d.temperature}°C</dd>
-                </div>
-                <div>
-                  <dt>Atmosphere</dt>
-                  <dd>{d.atmosphere}</dd>
-                </div>
-                <div>
-                  <dt>Resource</dt>
-                  <dd>{d.resource}</dd>
-                </div>
-                <div>
-                  <dt>Hazard</dt>
-                  <dd>{d.hazard} / 5</dd>
-                </div>
-                {d.anomaly && (
-                  <div>
-                    <dt>Rare signature</dt>
-                    <dd>Resonant monolith</dd>
-                  </div>
-                )}
-              </dl>
-              <small>DISCOVERY ID / {d.seed.toString(16).toUpperCase()}</small>
-            </article>
-          ))
-        ) : (
-          <div className="empty-journal">
-            <div className="orbit-mark">◎</div>
-            <h3>A blank page. An infinite sky.</h3>
-            <p>
-              Keep a planet in view and press <kbd>F</kbd>.<br />A four-second
-              scan records your discovery.
-            </p>
-          </div>
-        )}
-      </div>
-      <button className="primary" onClick={() => setScreen("flight")}>
-        RETURN TO FLIGHT <span>↗</span>
-      </button>
-    </>
   );
 }
 function HUD() {
@@ -576,7 +540,7 @@ function HUD() {
         </span>
       </div>
       {debug && (
-        <pre className="debug">{`FPS ${Math.round(t.fps)} | DRAW ${t.drawCalls}\nTRIANGLES ${format(t.triangles)}\nSECTORS ${world.sectors} | PLANETS ${world.planets.length}\nTERRAIN FACES ${world.planets.length*6} | TARGET LOD ${t.lod}\nGPU GEOMETRIES ${t.geometries}\nXYZ ${flight.position.toArray().map(Math.round).join(" / ")}\nSEED ${useGame.getState().seed}`}</pre>
+        <pre className="debug">{`FPS ${Math.round(t.fps)} | DRAW ${t.drawCalls}\nTRIANGLES ${format(t.triangles)}\nSECTORS ${world.sectors} | PLANETS ${world.planets.length}\nTERRAIN FACES ${world.planets.length * 6} | TARGET LOD ${t.lod}\nGPU GEOMETRIES ${t.geometries}\nXYZ ${flight.position.toArray().map(Math.round).join(" / ")}\nSEED ${useGame.getState().seed}`}</pre>
       )}
     </>
   );

@@ -96,12 +96,6 @@ export function Universe({
   });
   return (
     <>
-      <ambientLight intensity={0.32} />
-      <directionalLight
-        position={[-5000, 2500, 5000]}
-        intensity={2.6}
-        color="#fff0dc"
-      />
       <Stars
         radius={35000}
         depth={45000}

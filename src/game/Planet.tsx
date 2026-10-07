@@ -15,6 +15,7 @@ import type { Planet as PlanetData } from "./universe";
 import { planetVertex, planetFragment } from "./shaders";
 import { telemetry } from "./telemetry";
 import { useGame } from "../stores/game";
+import { surface } from "./surface/state";
 const atmosphereVertex = `varying vec3 vNormal; varying vec3 vPosition; void main(){vec4 world=modelMatrix*vec4(position,1.); vPosition=world.xyz;vNormal=normalize(mat3(modelMatrix)*normal);gl_Position=projectionMatrix*viewMatrix*world;}`;
 const atmosphereFragment = `uniform vec3 tint; varying vec3 vNormal; varying vec3 vPosition; void main(){vec3 view=normalize(cameraPosition-vPosition);float rim=pow(1.-abs(dot(normalize(vNormal),view)),3.2);float sun=.3+.7*max(dot(normalize(vNormal),normalize(vec3(-.8,.5,.8))),0.);gl_FragColor=vec4(tint*sun,rim*.55);}`;
 export const PlanetMesh = memo(function PlanetMesh({
@@ -53,6 +54,8 @@ export const PlanetMesh = memo(function PlanetMesh({
   const surfaceUniforms = useMemo(
     () => ({
       seed: { value: planet.seed % 1000 },
+      patchCenter: { value: new Vector3() },
+      patchRadius: { value: 0 },
       ocean: {
         value: planet.type === "Ocean" || planet.type === "Lush" ? 1 : 0,
       },
@@ -60,6 +63,9 @@ export const PlanetMesh = memo(function PlanetMesh({
     [planet],
   );
   useFrame((_, dt) => {
+    surfaceUniforms.patchRadius.value =
+      surface.planet?.id === planet.id ? surface.patchRadius : 0;
+    surfaceUniforms.patchCenter.value.copy(surface.patchCenter);
     if (group.current)
       group.current.position.set(...planet.position).sub(flight.position);
     if (telemetry.target?.id === planet.id) telemetry.lod = lod;

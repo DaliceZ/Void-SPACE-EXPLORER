@@ -8,9 +8,18 @@ import {
   type Discovery,
 } from "../game/save";
 import { flight } from "../game/runtime";
-import {surface,restoreExpansion} from '../game/surface/state';
+import { surface, restoreExpansion } from "../game/surface/state";
 export type Screen =
-  "menu" | "flight" | "pause" | "settings" | "journal" | "new" | "about" | "inventory" | "fleet" | "map";
+  | "menu"
+  | "flight"
+  | "pause"
+  | "settings"
+  | "journal"
+  | "new"
+  | "about"
+  | "inventory"
+  | "fleet"
+  | "map";
 const saved = loadSave();
 let sessionStarted = false;
 type State = {
@@ -36,7 +45,7 @@ export const useGame = create<State>((set, get) => ({
   screen: "menu",
   setScreen: (screen) => {
     flight.keys.clear();
-    surface.mouseDown=false;
+    surface.mouseDown = false;
     flight.mouse.x = flight.mouse.y = 0;
     if (screen !== "flight" && document.pointerLockElement)
       document.exitPointerLock();
@@ -88,7 +97,7 @@ export const useGame = create<State>((set, get) => ({
     if (!s.hasSave || !sessionStarted) return;
     const ok = writeSave({
       version: 2,
-      expansion:surface.data,
+      expansion: surface.data,
       seed: s.seed,
       position: flight.position.toArray(),
       rotation: flight.rotation.toArray() as [number, number, number, number],

@@ -5,6 +5,16 @@ import { useGame } from "./stores/game";
 import { Component, useEffect, type ReactNode } from "react";
 import { Interface } from "./ui/Interface";
 import { SpaceEffects } from "./game/SpaceEffects";
+import { SurfaceTerrain } from "./game/surface/SurfaceTerrain";
+import { SurfacePopulation } from "./game/surface/SurfacePopulation";
+import { surface } from "./game/surface/state";
+import { SurfaceEffects } from "./game/surface/SurfaceEffects";
+import { Environment } from "./game/surface/Environment";
+import { BaseWorld } from "./game/surface/BaseWorld";
+import { placePiece } from "./game/surface/building";
+import { SpacePhenomena } from "./game/SpacePhenomena";
+import { FeedbackEffects } from "./game/FeedbackEffects";
+import { MicroDetails } from "./game/surface/MicroDetails";
 class RenderBoundary extends Component<
   { children: ReactNode },
   { error: boolean }
@@ -40,6 +50,7 @@ export function App() {
   return (
     <RenderBoundary>
       <Canvas
+        shadows={quality > 1}
         dpr={[1, quality === 3 ? 1.7 : quality === 2 ? 1.3 : 1]}
         camera={{ near: 0.1, far: 150000 }}
         gl={{ antialias: quality > 1, powerPreference: "high-performance" }}
@@ -62,6 +73,10 @@ export function App() {
         }}
         onPointerDown={(e) => {
           if (screen === "flight") {
+            if (surface.data.mode === "foot" && document.pointerLockElement) {
+              if (surface.building) placePiece();
+              else surface.mouseDown = true;
+            }
             const result = (e.target as HTMLCanvasElement).requestPointerLock();
             result?.catch(() =>
               useGame
@@ -75,6 +90,14 @@ export function App() {
         <Universe seed={seed} quality={quality} />
         <SpaceEffects />
         <Flight />
+        <FeedbackEffects />
+        <SurfaceTerrain />
+        <SurfacePopulation />
+        <MicroDetails />
+        <SurfaceEffects />
+        <Environment />
+        <BaseWorld />
+        <SpacePhenomena />
       </Canvas>
       <div className="vignette" />
       <Interface />

@@ -1,5 +1,5 @@
 import type { Vec3, Planet } from "./universe";
-import {initialExpansion,type ExpansionSave} from './surface/types';
+import { initialExpansion, type ExpansionSave } from "./surface/types";
 export type Settings = {
   quality: number;
   sensitivity: number;
@@ -20,7 +20,7 @@ export type Discovery = Pick<
   | "anomaly"
 > & { time: number };
 export type Save = {
-  version: 1|2;
+  version: 1 | 2;
   expansion?: ExpansionSave;
   seed: string;
   position: Vec3;
@@ -49,7 +49,7 @@ export function validateSave(v: unknown): v is Save {
   if (!v || typeof v !== "object") return false;
   const s = v as Save;
   return (
-    (s.version === 1 || (s.version===2 && validateExpansion(s.expansion))) &&
+    (s.version === 1 || (s.version === 2 && validateExpansion(s.expansion))) &&
     typeof s.seed === "string" &&
     s.seed.length > 0 &&
     s.seed.length <= 64 &&
@@ -92,19 +92,139 @@ export function validateSave(v: unknown): v is Save {
 export function loadSave(): Save | null {
   try {
     const v = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
-    return validateSave(v) ? {...v,version:2,expansion:v.expansion||initialExpansion()} : null;
+    return validateSave(v)
+      ? { ...v, version: 2, expansion: v.expansion || initialExpansion() }
+      : null;
   } catch {
     return null;
   }
 }
 export function writeSave(save: Save) {
   try {
-    const previous=localStorage.getItem(SAVE_KEY);
-    if(previous&&!localStorage.getItem('void.expedition.v1.backup')){try{if(JSON.parse(previous).version===1)localStorage.setItem('void.expedition.v1.backup',previous);}catch{/* invalid saves are not migrated */}}
+    const previous = localStorage.getItem(SAVE_KEY);
+    if (previous && !localStorage.getItem("void.expedition.v1.backup")) {
+      try {
+        if (JSON.parse(previous).version === 1)
+          localStorage.setItem("void.expedition.v1.backup", previous);
+      } catch {
+        /* invalid saves are not migrated */
+      }
+    }
     localStorage.setItem(SAVE_KEY, JSON.stringify(save));
     return true;
   } catch {
     return false;
   }
 }
-function validateExpansion(value:unknown):value is ExpansionSave{if(!value||typeof value!=='object')return false;const d=value as ExpansionSave;const inventory=(v:unknown)=>!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.entries(v).every(([k,n])=>['veyrite','mycel','silica','prism','rime','alloy','cell','module','relic'].includes(k)&&Number.isInteger(n)&&n>=0&&n<=99999);return ['flight','landing','landed','foot'].includes(d.mode)&&(d.planetId===null||typeof d.planetId==='string'&&/^-?\d+:-?\d+:-?\d+\/[0-9]$/.test(d.planetId))&&(d.mode==='flight'||d.planetId!==null)&&finiteArray(d.shipPosition,3)&&finiteArray(d.shipRotation,4)&&[d.health,d.suit,d.jetpack].every(n=>Number.isFinite(n)&&n>=0&&n<=100)&&Number.isFinite(d.elapsed)&&d.elapsed>=0&&inventory(d.inventory)&&inventory(d.shipCargo)&&!!d.changes&&typeof d.changes==='object'&&!Array.isArray(d.changes)&&Object.entries(d.changes).length<=20000&&Object.values(d.changes).every(Number.isFinite)&&Array.isArray(d.bases)&&d.bases.length<=500&&d.bases.every(b=>b&&typeof b.id==='string'&&typeof b.planetId==='string'&&['foundation','floor','wall','window','door','roof','ramp','light','storage','power','beacon'].includes(b.type)&&finiteArray(b.position,3)&&finiteArray(b.rotation,4))&&Array.isArray(d.catalog)&&d.catalog.length<=10000&&d.catalog.every(e=>e&&typeof e.id==='string'&&typeof e.name==='string'&&typeof e.category==='string'&&typeof e.planetId==='string'&&finiteArray(e.position,3)&&typeof e.details==='object')&&Array.isArray(d.ships)&&d.ships.length<=100&&d.ships.every(s=>s&&typeof s.id==='string'&&Number.isFinite(s.seed)&&typeof s.name==='string'&&Number.isFinite(s.speed)&&Number.isFinite(s.handling)&&Number.isFinite(s.cargo))&&typeof d.activeShip==='string'&&Array.isArray(d.upgrades)&&d.upgrades.every(u=>typeof u==='string');}
+function validateExpansion(value: unknown): value is ExpansionSave {
+  if (!value || typeof value !== "object") return false;
+  const d = value as ExpansionSave;
+  const inventory = (v: unknown) =>
+    !!v &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    Object.entries(v).every(
+      ([k, n]) =>
+        [
+          "veyrite",
+          "mycel",
+          "silica",
+          "prism",
+          "rime",
+          "alloy",
+          "cell",
+          "module",
+          "relic",
+        ].includes(k) &&
+        Number.isInteger(n) &&
+        n >= 0 &&
+        n <= 99999,
+    );
+  return (
+    ["flight", "landing", "landed", "foot"].includes(d.mode) &&
+    (d.planetId === null ||
+      (typeof d.planetId === "string" &&
+        /^-?\d+:-?\d+:-?\d+\/[0-9]$/.test(d.planetId))) &&
+    (d.mode === "flight" || d.planetId !== null) &&
+    finiteArray(d.shipPosition, 3) &&
+    finiteArray(d.shipRotation, 4) &&
+    Math.abs(Math.hypot(...d.shipRotation) - 1) < 0.1 &&
+    [d.health, d.suit, d.jetpack].every(
+      (n) => Number.isFinite(n) && n >= 0 && n <= 100,
+    ) &&
+    Number.isFinite(d.elapsed) &&
+    d.elapsed >= 0 &&
+    inventory(d.inventory) &&
+    inventory(d.shipCargo) &&
+    !!d.changes &&
+    typeof d.changes === "object" &&
+    !Array.isArray(d.changes) &&
+    Object.entries(d.changes).length <= 20000 &&
+    Object.values(d.changes).every(Number.isFinite) &&
+    Array.isArray(d.bases) &&
+    d.bases.length <= 500 &&
+    d.bases.every(
+      (b) =>
+        b &&
+        typeof b.id === "string" &&
+        typeof b.planetId === "string" &&
+        [
+          "foundation",
+          "floor",
+          "wall",
+          "window",
+          "door",
+          "roof",
+          "ramp",
+          "light",
+          "storage",
+          "power",
+          "beacon",
+        ].includes(b.type) &&
+        finiteArray(b.position, 3) &&
+        finiteArray(b.rotation, 4) &&
+        Math.abs(Math.hypot(...b.rotation) - 1) < 0.1 &&
+        (b.name === undefined || typeof b.name === "string"),
+    ) &&
+    Array.isArray(d.catalog) &&
+    d.catalog.length <= 10000 &&
+    d.catalog.every(
+      (e) =>
+        e &&
+        typeof e.id === "string" &&
+        typeof e.name === "string" &&
+        typeof e.category === "string" &&
+        typeof e.planetId === "string" &&
+        finiteArray(e.position, 3) &&
+        typeof e.planetName === "string" &&
+        typeof e.system === "string" &&
+        typeof e.rarity === "string" &&
+        typeof e.description === "string" &&
+        Number.isFinite(e.time) &&
+        !!e.details &&
+        typeof e.details === "object" &&
+        Object.values(e.details).every((v) => typeof v === "string"),
+    ) &&
+    Array.isArray(d.ships) &&
+    d.ships.length <= 100 &&
+    d.ships.every(
+      (s) =>
+        s &&
+        typeof s.id === "string" &&
+        Number.isFinite(s.seed) &&
+        typeof s.name === "string" &&
+        [s.speed, s.handling, s.cargo, s.scanner, s.efficiency].every(
+          (n) => Number.isFinite(n) && n > 0,
+        ) &&
+        typeof s.className === "string" &&
+        typeof s.paint === "string" &&
+        typeof s.planetId === "string" &&
+        typeof s.rarity === "string" &&
+        typeof s.damaged === "boolean" &&
+        (s.position === undefined || finiteArray(s.position, 3)),
+    ) &&
+    typeof d.activeShip === "string" &&
+    Array.isArray(d.upgrades) &&
+    d.upgrades.every((u) => typeof u === "string")
+  );
+}

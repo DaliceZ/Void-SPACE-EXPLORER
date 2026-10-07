@@ -1,15 +1,144 @@
-import { Matrix4, Quaternion, Vector3 } from 'three';
-import { surfaceHeight } from '../terrain';
-import { generatePlanets,generateSystem,type Planet,type Vec3 } from '../universe';
-export const EYE_HEIGHT=.18,SHIP_HEIGHT=.92;
-export function resolvePlanet(seed:string,id:string){const [system,index]=id.split('/');const sector=system.split(':').map(Number) as Vec3;return generatePlanets(generateSystem(seed,sector))[Number(index)];}
-export function radial(p:Planet,position:Vector3){return position.clone().sub(new Vector3(...p.position)).normalize();}
-export function radiusAt(p:Planet,n:Vector3){return p.radius*(1+surfaceHeight(n.x,n.y,n.z,p));}
-export function groundPoint(p:Planet,n:Vector3,height=0){return new Vector3(...p.position).addScaledVector(n,radiusAt(p,n)+height);}
-export function tangentFrame(n:Vector3){const east=new Vector3(0,1,0).cross(n);if(east.lengthSq()<.01)east.set(1,0,0).cross(n);east.normalize();return{east,north:n.clone().cross(east).normalize()};}
-export function terrainNormal(p:Planet,n:Vector3){const {east,north}=tangentFrame(n),e=.15/p.radius;const a=groundPoint(p,n.clone().addScaledVector(east,e).normalize()),b=groundPoint(p,n.clone().addScaledVector(east,-e).normalize()),c=groundPoint(p,n.clone().addScaledVector(north,e).normalize()),d=groundPoint(p,n.clone().addScaledVector(north,-e).normalize());return a.sub(b).cross(c.sub(d)).normalize();}
-export function surfaceRotation(n:Vector3,forward?:Vector3){const {north}=tangentFrame(n);const f=(forward||north).clone().addScaledVector(n,-(forward||north).dot(n)).normalize();const right=f.clone().cross(n).normalize();return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(right,n,f.negate()));}
-export function safeGround(p:Planet,n:Vector3){if(p.type==='Gas giant')return false;const h=surfaceHeight(n.x,n.y,n.z,p);if((p.type==='Ocean'||p.type==='Lush')&&h<.0035)return false;const up=terrainNormal(p,n);if(up.dot(n)<.92)return false;const {east,north}=tangentFrame(n);const heights=[east,east.clone().negate(),north,north.clone().negate()].map(v=>radiusAt(p,n.clone().addScaledVector(v,2.8/p.radius).normalize()));return Math.max(...heights)-Math.min(...heights)<1.35;}
-export function landingSite(p:Planet,position:Vector3){const n=radial(p,position),{east,north}=tangentFrame(n);for(let ring=0;ring<22;ring++){const count=ring?20:1;for(let i=0;i<count;i++){const angle=i/count*Math.PI*2;const candidate=n.clone().addScaledVector(east,Math.cos(angle)*ring*.025).addScaledVector(north,Math.sin(angle)*ring*.025).normalize();if(safeGround(p,candidate))return groundPoint(p,candidate,SHIP_HEIGHT);}}return null;}
+import { Matrix4, Quaternion, Vector3 } from "three";
+import { surfaceHeight } from "../terrain";
+import {
+  generatePlanets,
+  generateSystem,
+  type Planet,
+  type Vec3,
+} from "../universe";
+export const EYE_HEIGHT = 0.18,
+  SHIP_HEIGHT = 0.92;
+export function resolvePlanet(seed: string, id: string) {
+  const [system, index] = id.split("/");
+  const sector = system.split(":").map(Number) as Vec3;
+  return generatePlanets(generateSystem(seed, sector))[Number(index)];
+}
+export function radial(p: Planet, position: Vector3) {
+  return position
+    .clone()
+    .sub(new Vector3(...p.position))
+    .normalize();
+}
+export function radiusAt(p: Planet, n: Vector3) {
+  return p.radius * (1 + surfaceHeight(n.x, n.y, n.z, p));
+}
+export function groundPoint(p: Planet, n: Vector3, height = 0) {
+  return new Vector3(...p.position).addScaledVector(n, radiusAt(p, n) + height);
+}
+export function tangentFrame(n: Vector3) {
+  const east = new Vector3(0, 1, 0).cross(n);
+  if (east.lengthSq() < 0.01) east.set(1, 0, 0).cross(n);
+  east.normalize();
+  return { east, north: n.clone().cross(east).normalize() };
+}
+export function terrainNormal(p: Planet, n: Vector3) {
+  const { east, north } = tangentFrame(n),
+    e = 0.15 / p.radius;
+  const a = groundPoint(p, n.clone().addScaledVector(east, e).normalize()),
+    b = groundPoint(p, n.clone().addScaledVector(east, -e).normalize()),
+    c = groundPoint(p, n.clone().addScaledVector(north, e).normalize()),
+    d = groundPoint(p, n.clone().addScaledVector(north, -e).normalize());
+  return a.sub(b).cross(c.sub(d)).normalize();
+}
+export function surfaceRotation(n: Vector3, forward?: Vector3) {
+  const { north } = tangentFrame(n);
+  const f = (forward || north)
+    .clone()
+    .addScaledVector(n, -(forward || north).dot(n))
+    .normalize();
+  const right = f.clone().cross(n).normalize();
+  return new Quaternion().setFromRotationMatrix(
+    new Matrix4().makeBasis(right, n, f.negate()),
+  );
+}
+export function safeGround(p: Planet, n: Vector3) {
+  if (p.type === "Gas giant") return false;
+  const h = surfaceHeight(n.x, n.y, n.z, p);
+  if ((p.type === "Ocean" || p.type === "Lush") && h < 0.0035) return false;
+  const up = terrainNormal(p, n);
+  if (up.dot(n) < 0.92) return false;
+  const { east, north } = tangentFrame(n);
+  const heights = [
+    east,
+    east.clone().negate(),
+    north,
+    north.clone().negate(),
+  ].map((v) =>
+    radiusAt(
+      p,
+      n
+        .clone()
+        .addScaledVector(v, 2.8 / p.radius)
+        .normalize(),
+    ),
+  );
+  return Math.max(...heights) - Math.min(...heights) < 1.35;
+}
+export function landingSite(p: Planet, position: Vector3) {
+  const n = radial(p, position),
+    { east, north } = tangentFrame(n);
+  for (let ring = 0; ring < 22; ring++) {
+    const count = ring ? 20 : 1;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const candidate = n
+        .clone()
+        .addScaledVector(east, Math.cos(angle) * ring * 0.025)
+        .addScaledVector(north, Math.sin(angle) * ring * 0.025)
+        .normalize();
+      if (safeGround(p, candidate))
+        return groundPoint(p, candidate, SHIP_HEIGHT);
+    }
+  }
+  return null;
+}
 // The patch is rendered on the same sphere, sampling V1's unmodified seed/height function.
-export function buildSurfacePatch(p:Planet,center:Vec3,resolution=96){const n=new Vector3(...center),{east,north}=tangentFrame(n),size=64;const positions=new Float32Array((resolution+1)**2*3),colors=new Float32Array(positions.length),indices=new Uint32Array(resolution**2*6);let at=0,index=0;for(let y=0;y<=resolution;y++)for(let x=0;x<=resolution;x++){const normal=n.clone().addScaledVector(east,(x/resolution*2-1)*size/p.radius).addScaledVector(north,(y/resolution*2-1)*size/p.radius).normalize();const radius=radiusAt(p,normal);positions.set(normal.toArray().map(v=>v*radius),at*3);const height=(radius-p.radius)/p.radius;let color=p.type==='Ice'?[.55,.65,.68]:p.type==='Desert'?[.34,.23,.13]:p.type==='Volcanic'?[.13,.09,.075]:p.type==='Crystal'?[.25,.22,.33]:p.type==='Barren'?[.19,.18,.16]:height<.001?[.018,.085,.14]:[.12,.18,.13];if(height>.04)color=[.35,.38,.35];colors.set(color,at*3);if(x<resolution&&y<resolution){const a=at,b=a+1,c=a+resolution+1;indices.set([a,b,c,b,c+1,c],index);index+=6;}at++;}return{positions,colors,indices};}
+export function buildSurfacePatch(p: Planet, center: Vec3, resolution = 96) {
+  const n = new Vector3(...center),
+    { east, north } = tangentFrame(n),
+    size = 64;
+  const positions = new Float32Array((resolution + 1) ** 2 * 3),
+    colors = new Float32Array(positions.length),
+    indices = new Uint32Array(resolution ** 2 * 6);
+  let at = 0,
+    index = 0;
+  for (let y = 0; y <= resolution; y++)
+    for (let x = 0; x <= resolution; x++) {
+      const normal = n
+        .clone()
+        .addScaledVector(east, (((x / resolution) * 2 - 1) * size) / p.radius)
+        .addScaledVector(north, (((y / resolution) * 2 - 1) * size) / p.radius)
+        .normalize();
+      const radius = radiusAt(p, normal);
+      positions.set(
+        normal.toArray().map((v) => v * radius),
+        at * 3,
+      );
+      const height = (radius - p.radius) / p.radius;
+      let color =
+        p.type === "Ice"
+          ? [0.55, 0.65, 0.68]
+          : p.type === "Desert"
+            ? [0.34, 0.23, 0.13]
+            : p.type === "Volcanic"
+              ? [0.13, 0.09, 0.075]
+              : p.type === "Crystal"
+                ? [0.25, 0.22, 0.33]
+                : p.type === "Barren"
+                  ? [0.19, 0.18, 0.16]
+                  : height < 0.001
+                    ? [0.018, 0.085, 0.14]
+                    : [0.12, 0.18, 0.13];
+      if (height > 0.04) color = [0.35, 0.38, 0.35];
+      colors.set(color, at * 3);
+      if (x < resolution && y < resolution) {
+        const a = at,
+          b = a + 1,
+          c = a + resolution + 1;
+        indices.set([a, b, c, b, c + 1, c], index);
+        index += 6;
+      }
+      at++;
+    }
+  return { positions, colors, indices };
+}

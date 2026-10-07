@@ -45,6 +45,7 @@ await page.waitForTimeout(300);
 assert(
   await page.getByRole("heading", { name: "Discovery journal." }).isVisible(),
 );
+await page.getByRole("button", { name: "PLANETS", exact: true }).click();
 assert(
   (await page.locator(".discovery-list article").count()) === 1,
   "scan records a discovery",
@@ -58,6 +59,7 @@ assert(save.discoveries.length === 1);
 await page.reload();
 await page.getByRole("button", { name: "CONTINUE EXPEDITION" }).click();
 await page.keyboard.press("Tab");
+await page.getByRole("button", { name: "PLANETS", exact: true }).click();
 assert(
   (await page.locator(".discovery-list article").count()) === 1,
   "discovery persists",
